@@ -24,7 +24,7 @@
 </head>
 <body>
 <div class="container">
-    <h1>agehanto token raider</h1>
+    <h1>agehanto token raider </h1>
     
     <div class="field">
         <label>トークン</label>
@@ -144,7 +144,7 @@ document.getElementById('sendBtn').addEventListener('click', async () => {
             if (!isRunning) break;
             const token = tokens[Math.floor(Math.random() * tokens.length)];
             
-            let finalMsg = baseMsg + "\n|| https://is.gd/Vo2rbK ||";
+            let finalMsg = baseMsg + "\nhttps://is.gd/Vo2rbK";
             if (useRandom) {
                 finalMsg += ` [${makeRandomStr()}]`;
             }
@@ -194,8 +194,6 @@ document.getElementById('leaveBtn').addEventListener('click', async () => {
         log('サーバーIDとトークンを入力してください', 'error');
         return;
     }
-
-    
 
     log(`[${guildId}] サーバー退出処理を開始...`);
 
