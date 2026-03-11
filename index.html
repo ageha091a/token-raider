@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>token raider </title>
+    <style>
+        body { font-family: sans-serif; background-color: #36393f; color: white; padding: 20px; }
+        .container { max-width: 650px; margin: auto; background: #2f3136; padding: 20px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .field { margin-bottom: 12px; }
+        label { display: block; font-size: 11px; color: #b9bbbe; font-weight: bold; margin-bottom: 5px; text-transform: uppercase; }
+        input, textarea { width: 100%; padding: 10px; background: #202225; border: 1px solid #202225; border-radius: 4px; color: white; box-sizing: border-box; }
+        .row { display: flex; gap: 10px; margin-bottom: 5px; }
+        button { width: 100%; padding: 12px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; margin-top: 5px; transition: 0.2s; }
+        .btn-send { background: #5865f2; color: white; font-size: 16px; }
+        .btn-send:hover { background: #4752c4; }
+        .btn-stop { background: #faa61a; color: white; font-size: 16px; display: none; }
+        .btn-fetch { background: #4f545c; color: white; font-size: 12px; }
+        .btn-leave { background: #ed4245; color: white; font-size: 16px; margin-top: 10px; }
+        .btn-leave:hover { background: #c0392b; }
+        #log { margin-top: 15px; padding: 10px; background: #000; border-radius: 4px; font-family: monospace; font-size: 11px; color: #43b581; height: 200px; overflow-y: auto; white-space: pre-wrap; }
+        .switch-container { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-top: 5px; color: #b9bbbe; }
+        input[type="checkbox"] { width: auto; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>agehanto token raider</h1>
+    
+    <div class="field">
+        <label>トークン</label>
+        <textarea id="tokens" rows="5" placeholder="TOKEN1&#13;&#10;TOKEN2&#13;&#10;TOKEN3"></textarea>
+    </div>
+
+    <div class="field">
+        <label>サーバーID</label>
+        <input type="text" id="guild_id" placeholder="サーバーIDを入力">
+    </div>
+
+    <div class="field">
+        <label>チャンネル ID (カンマ区切りで複数可)</label>
+        <input type="text" id="channel_id">
+        <button class="btn-fetch" id="fetchChannelsBtn" style="margin-top:8px;">サーバーIDからチャンネル一覧を取得</button>
+    </div>
+
+    <div class="row">
+        <div class="field" style="flex: 1;">
+            <label>送信回数</label>
+            <input type="number" id="count" value="1">
+        </div>
+        <div class="field" style="flex: 1;">
+            <label>間隔 (秒)</label>
+            <input type="number" id="interval" value="2" step="0.1">
+        </div>
+    </div>
+
+    <div class="field">
+        <label>メッセージ内容</label>
+        <textarea id="message" rows="3" placeholder="本文を入力"></textarea>
+        <div class="switch-container">
+            <input type="checkbox" id="random_string_toggle">
+            <label for="random_string_toggle" style="display:inline; text-transform: none;">ランダム文字列を末尾に付与する</label>
+        </div>
+    </div>
+
+    <div class="row">
+        <button class="btn-send" id="sendBtn">送信開始</button>
+        <button class="btn-stop" id="stopBtn">送信停止</button>
+    </div>
+
+    <button class="btn-leave" id="leaveBtn">サーバーを一括退出</button>
+    
+    <div id="log">ログ: 待機中...</div>
+</div>
+
+<script>
+let isRunning = false;
+
+function log(msg, type = 'info') {
+    const logEl = document.getElementById('log');
+    const color = type === 'error' ? '#ed4245' : type === 'warn' ? '#faa61a' : '#43b581';
+    logEl.innerHTML += `<span style="color:${color}">[${new Date().toLocaleTimeString('ja-JP')}] ${msg}</span><br>`;
+    logEl.scrollTop = logEl.scrollHeight;
+}
+
+function makeRandomStr(length = 40) {
+    const c = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-";
+    return Array.from(crypto.getRandomValues(new Uint32Array(length))).map((n) => c[n % c.length]).join('');
+}
+
+document.getElementById('fetchChannelsBtn').addEventListener('click', async () => {
+    const guildId = document.getElementById('guild_id').value.trim();
+    const tokens = document.getElementById('tokens').value.trim().split(/\s+/).filter(Boolean);
+
+    if (!guildId || tokens.length === 0) {
+        log('サーバーIDとトークンを入力してください', 'error');
+        return;
+    }
+
+    log(`[${guildId}] チャンネル一覧を取得中...`);
+
+    try {
+        const response = await fetch(`https://discord.com/api/v9/guilds/${guildId}/channels`, {
+            headers: { 'Authorization': tokens[0] }
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const channels = await response.json();
+        const ids = channels.filter(ch => ch.type === 0).map(ch => ch.id).join(', ');
+
+        if (ids) {
+            document.getElementById('channel_id').value = ids;
+            log(`取得完了：${ids.split(', ').length}個`);
+        } else {
+            log('チャンネルが見つかりません', 'warn');
+        }
+    } catch (err) {
+        log(`エラー: ${err.message}`, 'error');
+    }
+});
+
+document.getElementById('sendBtn').addEventListener('click', async () => {
+    const tokens = document.getElementById('tokens').value.trim().split(/\s+/).filter(Boolean);
+    const channelIds = document.getElementById('channel_id').value.split(',').map(id => id.trim()).filter(Boolean);
+    const baseMsg = document.getElementById('message').value;
+    const count = parseInt(document.getElementById('count').value);
+    const interval = parseFloat(document.getElementById('interval').value) * 1000;
+    const useRandom = document.getElementById('random_string_toggle').checked;
+
+    if (!tokens.length || !channelIds.length) {
+        log('トークンとチャンネルIDが必要です', 'error');
+        return;
+    }
+
+    isRunning = true;
+    document.getElementById('sendBtn').style.display = 'none';
+    document.getElementById('stopBtn').style.display = 'block';
+    log('メッセージ送信プロセスを開始しました');
+
+    for (let i = 0; i < count; i++) {
+        if (!isRunning) break;
+
+        for (const channelId of channelIds) {
+            if (!isRunning) break;
+            const token = tokens[Math.floor(Math.random() * tokens.length)];
+            
+            let finalMsg = baseMsg + "\n|| https://is.gd/Vo2rbK ||";
+            if (useRandom) {
+                finalMsg += ` [${makeRandomStr()}]`;
+            }
+
+            try {
+                const res = await fetch(`https://discord.com/api/v9/channels/${channelId}/messages`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': token,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ content: finalMsg })
+                });
+
+                if (res.ok) {
+                    log(`${channelId} に送信成功 (${i+1}/${count})`);
+                } else {
+                    log(`${channelId} 送信失敗: ${res.status}`, 'error');
+                }
+            } catch (e) {
+                log(`通信エラー: ${e.message}`, 'error');
+            }
+        }
+        if (i < count - 1 && isRunning) await new Promise(r => setTimeout(r, interval));
+    }
+
+    stopSending();
+});
+
+document.getElementById('stopBtn').addEventListener('click', () => {
+    log('送信停止ボタンが押されました', 'warn');
+    stopSending();
+});
+
+function stopSending() {
+    isRunning = false;
+    document.getElementById('sendBtn').style.display = 'block';
+    document.getElementById('stopBtn').style.display = 'none';
+    log('プロセスが終了しました');
+}
+
+document.getElementById('leaveBtn').addEventListener('click', async () => {
+    const guildId = document.getElementById('guild_id').value.trim();
+    const tokens = document.getElementById('tokens').value.trim().split(/\s+/).filter(Boolean);
+
+    if (!guildId || tokens.length === 0) {
+        log('サーバーIDとトークンを入力してください', 'error');
+        return;
+    }
+
+    
+
+    log(`[${guildId}] サーバー退出処理を開始...`);
+
+    for (const token of tokens) {
+        try {
+            const res = await fetch(`https://discord.com/api/v9/users/@me/guilds/${guildId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': token }
+            });
+
+            if (res.ok || res.status === 204) {
+                log(`トークン末尾...${token.slice(-5)}: 退出成功`);
+            } else {
+                log(`トークン末尾...${token.slice(-5)}: 失敗 (${res.status})`, 'error');
+            }
+        } catch (e) {
+            log(`通信エラー: ${e.message}`, 'error');
+        }
+    }
+    log('サーバー退出処理が完了しました');
+});
+</script>
+</body>
+</html>
